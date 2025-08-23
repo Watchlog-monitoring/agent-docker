@@ -18,6 +18,7 @@ const autoPatterns = {
     default: /^(.*?)\s+(\w+):\s+(.*)$/,
 };
 
+
 function loadConfigFromEnv() {
     if (!process.env.LOG_WATCHLIST_JSON) {
         console.warn("ℹ No log watchlist found in environment. Skipping log monitoring.");

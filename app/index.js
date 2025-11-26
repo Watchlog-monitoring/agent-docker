@@ -12,6 +12,7 @@ const redisIntegration = require('./integrations/redis')
 const nginxIntegration = require('./integrations/nginx')
 const postgresIntegration = require('./integrations/postgresql');
 const mysqlIntegration = require('./integrations/mysql');
+const gitlabIntegration = require('./integrations/gitlab/index')
 const { collectAndEmitMetrics } = require('./collectAndEmitMetrics');
 const zlib = require('zlib');
 

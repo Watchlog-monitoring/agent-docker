@@ -12,6 +12,7 @@ const nginxIntegration = require('./integrations/nginx')
 const postgresIntegration = require('./integrations/postgresql');
 const mysqlIntegration = require('./integrations/mysql');
 const { collectAndEmitMetrics } = require('./collectAndEmitMetrics');
+const zlib = require('zlib');
 
 const logagent = require('./log-agent')
 let customMetrics = []
@@ -650,9 +651,33 @@ module.exports = class Application {
     // to collect and log metrics
     async collectMetrics() {
 
-
         // --- MongoDB ---
-        if (process.env.MONITOR_MONGODB === 'true') {
+        // پشتیبانی از JSON configs (چندین integration)
+        if (process.env.MONGODB_CONFIGS) {
+            try {
+                const configs = JSON.parse(process.env.MONGODB_CONFIGS);
+                if (Array.isArray(configs)) {
+                    for (const config of configs) {
+                        if (config.monitor === true || config.monitor === 'true') {
+                            const host = config.host || 'localhost';
+                            const port = config.port || '27017';
+                            const username = config.username || '';
+                            const password = config.password || '';
+
+                            mongoIntegration.getData(host, port, username, password, (result) => {
+                                if (result) {
+                                    emitWhenConnected('integrations/mongodbservice', { data: result });
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("❌ Error parsing MONGODB_CONFIGS:", error.message);
+            }
+        }
+        // Backward compatibility: استفاده از env variables قدیمی
+        else if (process.env.MONITOR_MONGODB === 'true') {
             const host = process.env.MONGODB_HOST || 'localhost';
             const port = process.env.MONGODB_PORT || '27017';
             const username = process.env.MONGODB_USERNAME || '';
@@ -666,7 +691,31 @@ module.exports = class Application {
         }
 
         // --- Redis ---
-        if (process.env.MONITOR_REDIS === 'true') {
+        // پشتیبانی از JSON configs (چندین integration)
+        if (process.env.REDIS_CONFIGS) {
+            try {
+                const configs = JSON.parse(process.env.REDIS_CONFIGS);
+                if (Array.isArray(configs)) {
+                    for (const config of configs) {
+                        if (config.monitor === true || config.monitor === 'true') {
+                            const host = config.host || '127.0.0.1';
+                            const port = config.port || '6379';
+                            const password = config.password || '';
+
+                            redisIntegration.getData(host, port, password, (result) => {
+                                if (result) {
+                                    emitWhenConnected('integrations/redisservice', { data: result });
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("❌ Error parsing REDIS_CONFIGS:", error.message);
+            }
+        }
+        // Backward compatibility: استفاده از env variables قدیمی
+        else if (process.env.MONITOR_REDIS === 'true') {
             const host = process.env.REDIS_HOST || '127.0.0.1';
             const port = process.env.REDIS_PORT || '6379';
             const password = process.env.REDIS_PASSWORD || '';
@@ -679,7 +728,33 @@ module.exports = class Application {
         }
 
         // --- PostgreSQL ---
-        if (process.env.MONITOR_POSTGRESQL === 'true' && process.env.POSTGRESQL_DATABASES) {
+        // پشتیبانی از JSON configs (چندین integration)
+        if (process.env.POSTGRESQL_CONFIGS) {
+            try {
+                const configs = JSON.parse(process.env.POSTGRESQL_CONFIGS);
+                if (Array.isArray(configs)) {
+                    for (const config of configs) {
+                        if ((config.monitor === true || config.monitor === 'true') && config.database && config.database.length > 0) {
+                            const host = config.host || 'localhost';
+                            const port = config.port || '5432';
+                            const username = config.username || '';
+                            const password = config.password || '';
+                            const databases = Array.isArray(config.database) ? config.database : [config.database];
+
+                            postgresIntegration.getData(host, port, username, password, databases, (result) => {
+                                if (result) {
+                                    emitWhenConnected('integrations/postgresqlservice', { data: result });
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("❌ Error parsing POSTGRESQL_CONFIGS:", error.message);
+            }
+        }
+        // Backward compatibility: استفاده از env variables قدیمی
+        else if (process.env.MONITOR_POSTGRESQL === 'true' && process.env.POSTGRESQL_DATABASES) {
             const host = process.env.POSTGRESQL_HOST || 'localhost';
             const port = process.env.POSTGRESQL_PORT || '5432';
             const username = process.env.POSTGRESQL_USERNAME || '';
@@ -694,7 +769,33 @@ module.exports = class Application {
         }
 
         // --- MySQL ---
-        if (process.env.MONITOR_MYSQL === 'true' && process.env.MYSQL_DATABASES) {
+        // پشتیبانی از JSON configs (چندین integration)
+        if (process.env.MYSQL_CONFIGS) {
+            try {
+                const configs = JSON.parse(process.env.MYSQL_CONFIGS);
+                if (Array.isArray(configs)) {
+                    for (const config of configs) {
+                        if ((config.monitor === true || config.monitor === 'true') && config.database && config.database.length > 0) {
+                            const host = config.host || 'localhost';
+                            const port = config.port || '3306';
+                            const username = config.username || '';
+                            const password = config.password || '';
+                            const databases = Array.isArray(config.database) ? config.database : [config.database];
+
+                            mysqlIntegration.getData(host, port, username, password, databases, (result) => {
+                                if (result) {
+                                    emitWhenConnected('integrations/mysqlservice', { data: result });
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("❌ Error parsing MYSQL_CONFIGS:", error.message);
+            }
+        }
+        // Backward compatibility: استفاده از env variables قدیمی
+        else if (process.env.MONITOR_MYSQL === 'true' && process.env.MYSQL_DATABASES) {
             const host = process.env.MYSQL_HOST || 'localhost';
             const port = process.env.MYSQL_PORT || '3306';
             const username = process.env.MYSQL_USERNAME || '';

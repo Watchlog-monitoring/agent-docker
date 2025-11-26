@@ -4,6 +4,7 @@ const express = require('express')
 const app = express()
 const exec = require('child_process').exec;
 const path = require('path')
+const fs = require('fs');
 const configFilePath = path.join(__dirname, './../.env');
 const dockerIntegration = require('./integrations/docker')
 const mongoIntegration = require('./integrations/mongo')
@@ -13,6 +14,23 @@ const postgresIntegration = require('./integrations/postgresql');
 const mysqlIntegration = require('./integrations/mysql');
 const { collectAndEmitMetrics } = require('./collectAndEmitMetrics');
 const zlib = require('zlib');
+
+// تابع برای خواندن فایل integration.json از پوشه config
+function loadIntegrationConfig() {
+    const configPath = path.join(__dirname, './config/integration.json');
+    try {
+        if (fs.existsSync(configPath)) {
+            const fileContent = fs.readFileSync(configPath, 'utf8');
+            const config = JSON.parse(fileContent);
+            if (Array.isArray(config)) {
+                return config;
+            }
+        }
+    } catch (error) {
+        console.error("❌ Error loading integration.json:", error.message);
+    }
+    return null;
+}
 
 const logagent = require('./log-agent')
 let customMetrics = []
@@ -650,10 +668,30 @@ module.exports = class Application {
 
     // to collect and log metrics
     async collectMetrics() {
+        // اولویت: فایل config > environment variables (JSON) > environment variables (قدیمی)
+        const integrationConfig = loadIntegrationConfig();
 
         // --- MongoDB ---
-        // پشتیبانی از JSON configs (چندین integration)
-        if (process.env.MONGODB_CONFIGS) {
+        // استفاده از فایل config
+        if (integrationConfig) {
+            const mongoConfigs = integrationConfig.filter(c => c.service === 'mongodb' && (c.monitor === true || c.monitor === 'true'));
+            if (mongoConfigs.length > 0) {
+                for (const config of mongoConfigs) {
+                    const host = config.host || 'localhost';
+                    const port = config.port || '27017';
+                    const username = config.username || '';
+                    const password = config.password || '';
+
+                    mongoIntegration.getData(host, port, username, password, (result) => {
+                        if (result) {
+                            emitWhenConnected('integrations/mongodbservice', { data: result });
+                        }
+                    });
+                }
+            }
+        }
+        // پشتیبانی از JSON configs در environment variable (چندین integration)
+        else if (process.env.MONGODB_CONFIGS) {
             try {
                 const configs = JSON.parse(process.env.MONGODB_CONFIGS);
                 if (Array.isArray(configs)) {
@@ -691,8 +729,25 @@ module.exports = class Application {
         }
 
         // --- Redis ---
-        // پشتیبانی از JSON configs (چندین integration)
-        if (process.env.REDIS_CONFIGS) {
+        // استفاده از فایل config
+        if (integrationConfig) {
+            const redisConfigs = integrationConfig.filter(c => c.service === 'redis' && (c.monitor === true || c.monitor === 'true'));
+            if (redisConfigs.length > 0) {
+                for (const config of redisConfigs) {
+                    const host = config.host || '127.0.0.1';
+                    const port = config.port || '6379';
+                    const password = config.password || '';
+
+                    redisIntegration.getData(host, port, password, (result) => {
+                        if (result) {
+                            emitWhenConnected('integrations/redisservice', { data: result });
+                        }
+                    });
+                }
+            }
+        }
+        // پشتیبانی از JSON configs در environment variable (چندین integration)
+        else if (process.env.REDIS_CONFIGS) {
             try {
                 const configs = JSON.parse(process.env.REDIS_CONFIGS);
                 if (Array.isArray(configs)) {
@@ -728,8 +783,27 @@ module.exports = class Application {
         }
 
         // --- PostgreSQL ---
-        // پشتیبانی از JSON configs (چندین integration)
-        if (process.env.POSTGRESQL_CONFIGS) {
+        // استفاده از فایل config
+        if (integrationConfig) {
+            const postgresConfigs = integrationConfig.filter(c => c.service === 'postgresql' && (c.monitor === true || c.monitor === 'true') && c.database && c.database.length > 0);
+            if (postgresConfigs.length > 0) {
+                for (const config of postgresConfigs) {
+                    const host = config.host || 'localhost';
+                    const port = config.port || '5432';
+                    const username = config.username || '';
+                    const password = config.password || '';
+                    const databases = Array.isArray(config.database) ? config.database : [config.database];
+
+                    postgresIntegration.getData(host, port, username, password, databases, (result) => {
+                        if (result) {
+                            emitWhenConnected('integrations/postgresqlservice', { data: result });
+                        }
+                    });
+                }
+            }
+        }
+        // پشتیبانی از JSON configs در environment variable (چندین integration)
+        else if (process.env.POSTGRESQL_CONFIGS) {
             try {
                 const configs = JSON.parse(process.env.POSTGRESQL_CONFIGS);
                 if (Array.isArray(configs)) {
@@ -769,8 +843,27 @@ module.exports = class Application {
         }
 
         // --- MySQL ---
-        // پشتیبانی از JSON configs (چندین integration)
-        if (process.env.MYSQL_CONFIGS) {
+        // استفاده از فایل config
+        if (integrationConfig) {
+            const mysqlConfigs = integrationConfig.filter(c => c.service === 'mysql' && (c.monitor === true || c.monitor === 'true') && c.database && c.database.length > 0);
+            if (mysqlConfigs.length > 0) {
+                for (const config of mysqlConfigs) {
+                    const host = config.host || 'localhost';
+                    const port = config.port || '3306';
+                    const username = config.username || '';
+                    const password = config.password || '';
+                    const databases = Array.isArray(config.database) ? config.database : [config.database];
+
+                    mysqlIntegration.getData(host, port, username, password, databases, (result) => {
+                        if (result) {
+                            emitWhenConnected('integrations/mysqlservice', { data: result });
+                        }
+                    });
+                }
+            }
+        }
+        // پشتیبانی از JSON configs در environment variable (چندین integration)
+        else if (process.env.MYSQL_CONFIGS) {
             try {
                 const configs = JSON.parse(process.env.MYSQL_CONFIGS);
                 if (Array.isArray(configs)) {
@@ -810,7 +903,17 @@ module.exports = class Application {
         }
 
         // --- Docker ---
-        if (process.env.MONITOR_DOCKER === 'true') {
+        if (integrationConfig) {
+            const dockerConfigs = integrationConfig.filter(c => c.service === 'docker' && (c.monitor === true || c.monitor === 'true'));
+            if (dockerConfigs.length > 0) {
+                dockerIntegration.getData((result) => {
+                    if (result) {
+                        emitWhenConnected('dockerInfo', { data: result });
+                    }
+                });
+            }
+        }
+        else if (process.env.MONITOR_DOCKER === 'true') {
             dockerIntegration.getData((result) => {
                 if (result) {
                     emitWhenConnected('dockerInfo', { data: result });
